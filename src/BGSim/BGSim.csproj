@@ -1,0 +1,18 @@
+﻿<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+    <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
+    <RootNamespace>Hearthpulse.Core.Battlegrounds</RootNamespace>
+    <AssemblyName>BGSim</AssemblyName>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <None Include="Effects\README.md" />
+    <InternalsVisibleTo Include="BGSim.Tests" />
+  </ItemGroup>
+
+</Project>
+

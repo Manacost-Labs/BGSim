@@ -1,0 +1,8 @@
+﻿<Solution>
+  <Folder Name="/src/">
+    <Project Path="src/BGSim/BGSim.csproj" />
+  </Folder>
+  <Folder Name="/tests/">
+    <Project Path="tests/BGSim.Tests/BGSim.Tests.csproj" />
+  </Folder>
+</Solution>

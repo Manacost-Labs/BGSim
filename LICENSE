@@ -1,0 +1,21 @@
+﻿BGSim
+Copyright (c) 2026 Manacost Labs. All rights reserved.
+
+This software, including its source code and documentation, is proprietary. It is part of Hearthpulse
+and is published separately for reference. No part of it may be copied, modified, merged, published,
+distributed, sublicensed, sold, or used to create derivative works, in whole or in part, without the
+prior written permission of the copyright holder. Publishing the source code does not grant any
+further rights.
+
+Portions of Hearthpulse, including portions of this simulator, are based on HeartLens by Dev-NotAqua
+and are used with the author's permission.
+
+Hearthstone, Battlegrounds and Blizzard Entertainment are trademarks or registered trademarks of
+Blizzard Entertainment, Inc. BGSim is a third-party program that is not affiliated with, endorsed by
+or sponsored by Blizzard Entertainment.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLIED, INCLUDING BUT
+NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND
+NONINFRINGEMENT. IN NO EVENT SHALL THE COPYRIGHT HOLDER BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN
+CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
