@@ -14,9 +14,16 @@ public static class DamageRules
 {
     /// <summary>Damage dealt by a winner on <paramref name="tavernTier"/> with surviving minions of the given tiers.</summary>
     /// <param name="cap">Combat damage cap; 0 or less means none.</param>
-    public static int Damage(int tavernTier, IEnumerable<int> survivorTiers, int cap)
+    public static int Damage(int tavernTier, IEnumerable<int> survivorTiers, int cap) =>
+        DamageOfTiers(tavernTier, survivorTiers.Sum(MinionTier), cap);
+
+    /// <summary>
+    /// <see cref="Damage(int, IEnumerable{int}, int)"/> with the survivors' shares (<see cref="MinionTier"/>) already
+    /// summed: the simulator adds them up per fight without a list.
+    /// </summary>
+    internal static int DamageOfTiers(int tavernTier, int survivorTierTotal, int cap)
     {
-        var damage = Math.Max(0, tavernTier) + survivorTiers.Sum(MinionTier);
+        var damage = Math.Max(0, tavernTier) + survivorTierTotal;
         return cap > 0 ? Math.Min(damage, cap) : damage;
     }
 
@@ -32,6 +39,33 @@ public static class DamageRules
 
     /// <summary>The fight kills the hero: damage reaches its health plus armor. Unknown health (0) never counts.</summary>
     public static bool IsLethal(int damage, int healthAndArmor) => healthAndArmor > 0 && damage >= healthAndArmor;
+
+    /// <summary>
+    /// Ice Block, the Battlegrounds secret: "prevent fatal damage to your hero". Power.log 15.11 g4c9 (line 1000169 attack,
+    /// 1000193 the secret triggers): a lethal hero attack dealt no damage (rules-evidence 8b).
+    /// </summary>
+    public const string IceBlock = "TB_Bacon_Secrets_12";
+
+    /// <summary>The side has Ice Block among its known secrets (only the local player's own are ever known).</summary>
+    public static bool HasIceBlock(SimSide side)
+    {
+        foreach (var secret in side.Secrets)
+        {
+            if (string.Equals(secret, IceBlock, StringComparison.Ordinal))
+            {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    /// <summary>
+    /// Damage the hero actually takes: none when the hit would be fatal and the hero has Ice Block, else
+    /// <paramref name="damage"/>. Unknown health (0) is never fatal, so the damage stands.
+    /// </summary>
+    public static int Taken(int damage, int healthAndArmor, bool iceBlock) =>
+        iceBlock && IsLethal(damage, healthAndArmor) ? 0 : damage;
 }
 
 /// <summary>

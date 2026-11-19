@@ -32,10 +32,15 @@ public sealed class Unit
         Stealth = spec.Stealth;
         Counter = spec.ScriptData1;
         Counter2 = spec.ScriptData2;
+        BloodGemAttack = spec.BloodGemAttack;
+        BloodGemHealth = spec.BloodGemHealth;
     }
 
-    /// <summary>What this unit was created from: the captured minion, a token, or a reborn copy.</summary>
-    public SimMinion Spec { get; }
+    /// <summary>
+    /// What this unit was created from: the captured minion, a token, or a reborn copy. Replaced only when an effect turns
+    /// the minion into another version of its card ("make Golden").
+    /// </summary>
+    public SimMinion Spec { get; internal set; }
 
     public string CardId => Spec.CardId;
 
@@ -80,6 +85,12 @@ public sealed class Unit
     /// <summary>Friendly deaths counted towards Avenge since it last fired (see <see cref="AvengeEffect"/>).</summary>
     public int AvengeCount { get; set; }
 
+    /// <summary>Attack gained from Blood Gems ("its Blood Gems"): the captured total plus gems played on it this fight.</summary>
+    public int BloodGemAttack { get; set; }
+
+    /// <summary>Health gained from Blood Gems, see <see cref="BloodGemAttack"/>.</summary>
+    public int BloodGemHealth { get; set; }
+
     /// <summary>On its side's board (dying minions stay on the board until the death phase removes them).</summary>
     public bool IsOnBoard { get; internal set; }
 
@@ -110,7 +121,7 @@ public sealed class Unit
         | (AttacksPerTurn >= 4 ? Keyword.MegaWindfury : AttacksPerTurn >= 2 ? Keyword.Windfury : 0);
 
     /// <summary>Its card effect first, then enchantment effects and effects gained in combat.</summary>
-    public IReadOnlyList<CombatEffect> Effects => _effects;
+    public EffectList Effects => new(_effects);
 
     /// <summary>Has a deathrattle: printed on the card, or from a registered effect.</summary>
     public bool HasDeathrattle => (Spec.Mechanics & CardMechanic.Deathrattle) != 0 || (Hooks & Hook.Deathrattle) != 0;
@@ -119,6 +130,9 @@ public sealed class Unit
 
     /// <summary>An effect on it makes it Immune while it attacks (Invulnerability).</summary>
     public bool ImmuneWhileAttacking { get; private set; }
+
+    /// <summary>Per-unit state objects of effects (Effects/ongoing/UnitState), one per state type; null until one is made.</summary>
+    internal object[]? EffectStates { get; set; }
 
     /// <summary>Attacks of this unit being resolved right now (more than one only for nested attacks); 0 = not attacking.</summary>
     internal int AttackDepth { get; set; }
@@ -136,6 +150,9 @@ public sealed class Unit
     internal bool DiedLeftOfGap { get; set; }
 
     internal int DeathIndex { get; set; }
+
+    /// <summary>Order of play: when it entered the fight (see <see cref="Fight"/>); simultaneous deaths resolve by it.</summary>
+    internal int Entry { get; init; }
 
     // Aura stats currently applied to this unit (captured stats already include the auras present at capture).
     internal StatDelta AppliedAura { get; set; }

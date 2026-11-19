@@ -5,20 +5,25 @@ namespace Hearthpulse.Core.Battlegrounds;
 /// <summary>Attacks: who attacks, the target (taunt, stealth, forced), windfury and queued attacks.</summary>
 public sealed partial class Fight
 {
+    // The candidates of one attack's target pick, reused (a pick never runs inside another).
+    private List<Unit>? _targets;
+
     private void Attack(Unit attacker, Unit? forcedTarget)
     {
         var defenders = attacker.Enemy;
-        var target = forcedTarget is { IsAlive: true } && forcedTarget.Side == defenders ? forcedTarget : PickTarget(defenders);
-        if (target is null || _depth >= MaxDepth)
+        var target = forcedTarget is { IsAlive: true } && forcedTarget.Side == defenders ? forcedTarget : PickTarget(attacker, defenders);
+        if (target is null || TooDeep())
         {
             return;
         }
 
+        _chooser.OnAttack(this, attacker, target, nested: _attacksInProgress > 0);
         var previous = Attacking;
         Attacking = attacker.Side;
         // Counted, not a single "current attacker": a nested attack (Rally, "attack immediately") keeps the outer
         // attacker attacking.
         attacker.AttackDepth++;
+        _attacksInProgress++;
         _depth++;
         _attacks++;
         try
@@ -26,7 +31,10 @@ public sealed partial class Fight
             attacker.Stealth = false;
             if (Tracing) Trace($"{Name(attacker)} attacks {Name(target)}");
 
-            // Attack declared: Rally / "whenever this attacks", then friendly and defending-side triggers, before damage.
+            // Attack declared, before damage: "whenever a friendly minion attacks" first, then the attacker's own Rally /
+            // "whenever this attacks" (effects-audit E1: 15.11 G1 Prodigious Tusker's gem on Bonker at line 236025, Bonker's
+            // Rally at 236080; G4 Faerie Dragon Scale 1331318, Rally 1331351), then the defending side's triggers.
+            Raise(attacker.Side, Hook.FriendlyAttack, attacker, target);
             if ((attacker.Hooks & Hook.Attack) != 0)
             {
                 foreach (var effect in attacker.Effects)
@@ -38,7 +46,6 @@ public sealed partial class Fight
                 }
             }
 
-            Raise(attacker.Side, Hook.FriendlyAttack, attacker, target);
             Raise(defenders, Hook.FriendlyAttacked, target, attacker);
             RefreshAuras();
             ResolveDeaths();
@@ -89,13 +96,14 @@ public sealed partial class Fight
         finally
         {
             _depth--;
+            _attacksInProgress--;
             Attacking = previous;
             attacker.AttackDepth--;
         }
     }
 
     /// <summary>Random target: Taunt minions first; Stealth minions only when nothing else can be attacked.</summary>
-    private Unit? PickTarget(Side side)
+    private Unit? PickTarget(Unit attacker, Side side)
     {
         int visible = 0, visibleTaunts = 0, alive = 0, taunts = 0;
         foreach (var unit in side.Minions)
@@ -121,8 +129,8 @@ public sealed partial class Fight
 
         // 0: visible taunts, 1: visible, 2: any taunt, 3: any.
         var mode = visible > 0 ? (visibleTaunts > 0 ? 0 : 1) : (taunts > 0 ? 2 : 3);
-        var count = mode switch { 0 => visibleTaunts, 1 => visible, 2 => taunts, _ => alive };
-        var pick = Random.Next(count);
+        var targets = _targets ??= new List<Unit>(Side.MaxMinions);
+        targets.Clear();
         foreach (var unit in side.Minions)
         {
             if (!unit.IsAlive)
@@ -137,13 +145,15 @@ public sealed partial class Fight
                 2 => unit.Taunt,
                 _ => true,
             };
-            if (eligible && pick-- == 0)
+            if (eligible)
             {
-                return unit;
+                targets.Add(unit);
             }
         }
 
-        return null;
+        var target = targets[Choose(ChoiceKind.AttackTarget, attacker, targets)];
+        targets.Clear();
+        return target;
     }
 
     /// <summary>Makes <paramref name="attacker"/> attack right now, out of turn order (e.g. a Golem that "attacks the target first").</summary>

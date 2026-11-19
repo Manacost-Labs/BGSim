@@ -6,10 +6,14 @@ namespace Hearthpulse.Core.Battlegrounds.Effects.Ongoing;
 /// <para>
 /// The Start of Combat part has resolved when the boards are captured: with space the Murloc is already on the board (and no
 /// longer in the hand). What is left is the "when you have space" wait: if the board was full at the start of the fight
-/// (7 minions), the summon is still pending, and it happens as soon as a friendly minion has died and there is room
-/// (<see cref="PendingMurlocs"/>), even after the Forager itself died. The Murloc is summoned right of the Forager while it
-/// is on the board, else at the right end. Needs the hand, which only the local player's is known: the opponent's Forager
-/// stays "not simulated". With a golden Forager and a full board the sim assumes none of the two was summoned yet.
+/// (7 minions), the summon is still pending, and it happens at the end of the first death phase that leaves room, after
+/// that phase's Reborn copies took theirs (<see cref="PendingMurlocs"/>; simreplay #4/11: Bubble Gunner's copy at line
+/// 1086990, the Murloc only after the copy died, 1087143), even after the Forager itself died. The Murloc is summoned at
+/// the right end of the board, wherever the Forager stands (real log 15.11.2026, build 255790: the delayed summon went to
+/// position 7 with the Forager alive at position 4, and with a golden one at position 3; simreplay #2/11-#2/14, lines
+/// 349140, 387154, 426591). Needs the hand, which only the local player's is known: the opponent's Forager stays "not
+/// simulated". The Murlocs still to summon are the player enchantment's count
+/// (<see cref="SimInputs.PendingForagerSummons"/>); without it, with a full board, the sim assumes none was summoned yet.
 /// </para>
 /// </summary>
 [CardEffect("BG27_556")]
@@ -26,7 +30,7 @@ internal sealed class DiremuckForager : CombatEffect
 
         var holder = PlayerEffects.Attach(self.Side, self.CardId, PendingMurlocs.Instance);
         var state = UnitState<PendingMurlocs.State>.Of(holder);
-        state.Remaining = self.Pick(1, 2);
+        state.Remaining = SimInputs.PendingForagerSummons(self.Side.Info, self.Spec.EntityId) ?? self.Pick(1, 2);
         state.Source = self;
     }
 }
@@ -39,27 +43,26 @@ internal sealed class PendingMurlocs : CombatEffect
     public sealed class State
     {
         public int Remaining;
+
+        /// <summary>The Forager whose summon this is: the owner of the tie-break decision (it may have died since).</summary>
         public Unit? Source;
     }
 
-    public override void AfterFriendlyDeath(Fight fight, Unit self, Unit dead)
+    public override void AfterDeathPhase(Fight fight, Unit self)
     {
         var state = UnitState<State>.Of(self);
         var side = self.Side;
         while (state.Remaining > 0 && !side.IsFull)
         {
             var hand = side.Hand;
-            var best = Best(fight, hand);
+            var best = fight.BestCard(hand, IsMurloc, m => m.Attack, state.Source ?? self);
             if (best < 0)
             {
                 return;
             }
 
             var murloc = hand[best];
-            var unit = state.Source is { IsOnBoard: true } source
-                ? fight.SummonAt(source, murloc)
-                : fight.Summon(side, murloc, side.Count);
-            if (unit is null)
+            if (fight.Summon(side, murloc, side.Count) is null)
             {
                 return;
             }
@@ -69,29 +72,5 @@ internal sealed class PendingMurlocs : CombatEffect
         }
     }
 
-    /// <summary>Index of the highest-Attack Murloc in the hand (random among equals), or -1.</summary>
-    private static int Best(Fight fight, List<SimMinion> hand)
-    {
-        var best = -1;
-        var ties = 0;
-        for (var i = 0; i < hand.Count; i++)
-        {
-            if ((hand[i].Tribes & Tribe.Murloc) == 0)
-            {
-                continue;
-            }
-
-            if (best < 0 || hand[i].Attack > hand[best].Attack)
-            {
-                best = i;
-                ties = 1;
-            }
-            else if (hand[i].Attack == hand[best].Attack && fight.Random.Next(++ties) == 0)
-            {
-                best = i;
-            }
-        }
-
-        return best;
-    }
+    private static bool IsMurloc(SimMinion minion) => (minion.Tribes & Tribe.Murloc) != 0;
 }
