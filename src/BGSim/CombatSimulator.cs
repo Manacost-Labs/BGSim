@@ -104,22 +104,6 @@ public sealed partial record SimMinion(
             BaseKeywords = keywords,
             Mechanics = mechanics,
         };
-
-    /// <summary>
-    /// What Reborn brings back: a fresh copy of the card with its printed Attack, 1 Health and its printed keywords
-    /// (not buffs, not enchantments), golden if the minion was golden, without Reborn. Its maximum Health is the printed
-    /// Health, so it is a damaged minion (Power.log: HEALTH = printed, DAMAGE = printed - 1; rules-evidence 4e, 12 copies).
-    /// </summary>
-    public SimMinion RebornCopy() =>
-        Create(CardId, RebornAttack, 1, Tribes, BaseKeywords & ~Keyword.Reborn, Golden, Mechanics) with
-        {
-            MaxHealth = Math.Max(1, BaseHealth),
-            BaseHealth = BaseHealth,
-            TechLevel = TechLevel,
-            // A fresh copy shows the card's base script data: the captured one where it never changes (FixedScriptDataCards).
-            ScriptData1 = FixedScriptDataCards.Contains(CardId) ? ScriptData1 : 0,
-            ScriptData2 = FixedScriptDataCards.Contains(CardId) ? ScriptData2 : 0,
-        };
 }
 
 /// <summary>
@@ -226,7 +210,8 @@ public sealed record SimOptions
     public int DamageCap { get; init; }
 
     /// <summary>
-    /// Estimate hero damage and lethal. Off for Duos, where the loser of one board is not the one who takes the damage.
+    /// Estimate hero damage and lethal. Duos counts them too, against the losing team's shared health
+    /// (<see cref="DamageRules.TeamHealth"/>); captures saved before that have it off for Duos.
     /// </summary>
     public bool CountDamage { get; init; } = true;
 
@@ -366,7 +351,7 @@ public static partial class CombatSimulator
             }
 
             var tally = new Tally();
-            rules.Add(tally, win > 0 ? 1 : loss > 0 ? -1 : 0, Tiers(ours.Minions), Tiers(theirs.Minions));
+            rules.Add(tally, win > 0 ? 1 : loss > 0 ? -1 : 0, Tiers(ours.Minions), Tiers(theirs.Minions), ours.TavernTier, theirs.TavernTier);
             return rules.With(certain, tally);
         }
 
@@ -423,6 +408,7 @@ public static partial class CombatSimulator
     /// </summary>
     private static int Unsimulated(SimSide side, bool isOpponent, EffectRegistry effects) =>
         side.Minions.Count(m => m.HasUnsimulatedEffect) + side.Extras.Count(id => ExtraReason(side, id, isOpponent, effects) is not null)
+        + side.Secrets.Count(id => ExtraReason(side, id, isOpponent, effects) is not null)
         + (side.Teammate is { } teammate ? Unsimulated(teammate, isOpponent, effects) : 0);
 
     /// <summary>
@@ -438,7 +424,7 @@ public static partial class CombatSimulator
             items.Add(new UnsimulatedItem(m.CardId, m.Golden, isOpponent, MinionReason(m, isOpponent, effects), Extra: false));
         }
 
-        foreach (var id in side.Extras)
+        foreach (var id in side.Extras.Concat(side.Secrets))
         {
             if (ExtraReason(side, id, isOpponent, effects) is { } reason)
             {
@@ -578,7 +564,7 @@ public static partial class CombatSimulator
 
             AddText(side.HeroCardId);
             AddText(side.HeroPowerCardId);
-            foreach (var extra in side.Extras)
+            foreach (var extra in side.Extras.Concat(side.Secrets))
             {
                 AddText(extra);
             }

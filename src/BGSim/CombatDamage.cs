@@ -46,19 +46,49 @@ public static class DamageRules
     /// </summary>
     public const string IceBlock = "TB_Bacon_Secrets_12";
 
-    /// <summary>The side has Ice Block among its known secrets (only the local player's own are ever known).</summary>
+    /// <summary>
+    /// Eleventh Hour, the Secret the Eleventh Hour anomaly (BG27_Anomaly_575) gives every player: "When your hero takes fatal
+    /// damage in combat, prevent it and gain 11 Gold next turn instead" — for the fight's hero damage the same rule as
+    /// <see cref="IceBlock"/>.
+    /// </summary>
+    public const string EleventhHour = "BG27_Anomaly_575t";
+
+    /// <summary>
+    /// The side has a Secret that prevents fatal hero damage (<see cref="IceBlock"/>, <see cref="EleventhHour"/>): among its
+    /// secrets (the local player's own; the opponent's only after the game, when the log showed them), or, for the opponent
+    /// during the game, the estimate that their hidden Secret can only be Eleventh Hour (<see cref="SimInputs.OpponentSecrets"/>).
+    /// A yes or no: two such Secrets prevent the one fatal hit, never more.
+    /// </summary>
     public static bool HasIceBlock(SimSide side)
     {
         foreach (var secret in side.Secrets)
         {
-            if (string.Equals(secret, IceBlock, StringComparison.Ordinal))
+            if (string.Equals(secret, IceBlock, StringComparison.Ordinal) || string.Equals(secret, EleventhHour, StringComparison.Ordinal))
             {
                 return true;
             }
         }
 
-        return false;
+        return SimInputs.Estimate(side, SimInputs.OpponentSecrets) is { Value2: > 0 };
     }
+
+    /// <summary>
+    /// Duos (TASK-2026-11-19 ACC2): the losing team's shared health, the health plus armor of the board that started the
+    /// fight (both heroes of a team show the team's pool), else its teammate's when only that one is known; 0 = unknown.
+    /// </summary>
+    /// <remarks>
+    /// Duos damage follows the general Duos rules, <b>not checked against a Duos Power.log</b> (the owner had none on
+    /// 2026-11-19): one health pool per team; the winning team deals the tavern tier of its board left standing (the
+    /// teammate's once that board entered) plus the tiers of that board's surviving minions, under the lobby's damage cap.
+    /// A solo side (no teammate) is unchanged: its own <see cref="SimSide.Health"/>.
+    /// </remarks>
+    public static int TeamHealth(SimSide side) => side.Health > 0 ? side.Health : side.Teammate?.Health ?? 0;
+
+    /// <summary>
+    /// Ice Block on the team: the side's own secrets, and in Duos its teammate's (only the local player's are ever known;
+    /// that Ice Block also guards the shared pool is the Duos assumption of <see cref="TeamHealth"/>).
+    /// </summary>
+    public static bool TeamHasIceBlock(SimSide side) => HasIceBlock(side) || (side.Teammate is { } teammate && HasIceBlock(teammate));
 
     /// <summary>
     /// Damage the hero actually takes: none when the hit would be fatal and the hero has Ice Block, else

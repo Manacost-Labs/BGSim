@@ -1,9 +1,11 @@
+using System.Globalization;
 using Hearthpulse.Core.Battlegrounds;
 using Hearthpulse.Core.Battlegrounds.Effects;
 using Hearthpulse.Core.Battlegrounds.Effects.Attack;
 using Hearthpulse.Core.Battlegrounds.Effects.Ongoing;
 using Hearthpulse.Core.Battlegrounds.Effects.Player;
 using Hearthpulse.Core.Battlegrounds.Effects.Spells;
+using Hearthpulse.Core.Battlegrounds.Effects.Timewarped;
 
 namespace Hearthpulse.Core.Tracking;
 
@@ -31,14 +33,21 @@ internal static class SimEstimates
          "BG32_MagicItem_808", "BG32_MagicItem_808t"];
 
     // Player cards whose number grows over the game and an effect reads (Effects/player/GrowingValues and E3 trinkets): All-
-    // Purpose Kibble, Hammer of Twilight, Snarky Portrait, Fang Anklet, Broodmother; Tentacular only when a Tentacle is owed.
+    // Purpose Kibble, Hammer of Twilight, Snarky Portrait, Fang Anklet, Broodmother, Dazzling Dagger, the reward Tumbling
+    // Disaster; Tentacular only when a Tentacle is owed.
     private static readonly string[] GrowingPlayerCards =
-        ["BG32_MagicItem_200", "BG36_MagicItem_403", "BG36_MagicItem_403t", "BG36_MagicItem_450", "BG35_MagicItem_701", "BG22_HERO_305p"];
+        ["BG32_MagicItem_200", "BG36_MagicItem_403", "BG36_MagicItem_403t", "BG36_MagicItem_450", "BG35_MagicItem_701", "BG22_HERO_305p",
+         "BG32_MagicItem_934", "BG28_Reward_505"];
 
     // Cards whose text shows the player's Beetle ("{0}/{1} Beetle"), Timewarped Nest Swarmer (same Beetle, printed 2/2) and
     // Beetle Band, which summon the player's Beetle.
     private static readonly string[] BeetleSummoners = ["BG31_803", "BG31_801", "BG31_809", "BG36_209", "BG34_Giant_687"];
     private static readonly string[] BeetleBand = ["BG32_MagicItem_860", "BG32_MagicItem_860t"];
+
+    // "After N …, get a random X. (N left!)" cards (Effects/player/ProgressCards) and their N: Lucky Tabby, Bleeding Heart,
+    // Stormcoil Sticker, Wildfeather Duster, MechGyver.
+    private static readonly (string Id, int Total)[] ProgressCards =
+        [("BG30_MagicItem_931", 6), ("BG30_MagicItem_713", 8), ("BG35_MagicItem_302", 5), ("BG35_MagicItem_700", 6), ("BG22_HERO_200p", 9)];
 
     /// <summary>
     /// The estimates of <paramref name="side"/>. Values an effect reads through <see cref="Side.Counter"/> are also written
@@ -53,10 +62,36 @@ internal static class SimEstimates
             estimates.Add(new SimEstimate(SimInputs.LobbyTribes, 0, 0, "lobby tribes not read from the client: every tribe of the pool"));
         }
 
+        if (side.Extras.Contains(IllTakeThat.Id))
+        {
+            // Not in the capture for either player (no tag read): whether the power was used this turn.
+            estimates.Add(new SimEstimate(SimInputs.HeroPowerUsed, 1, 0, IllTakeThat.Id + ": its use this turn is not read: assumed used"));
+        }
+
+        if (side.Minions.Any(m => m.CardId == SimInputs.Magnanimoose))
+        {
+            estimates.Add(new SimEstimate(SimInputs.OpponentWarband, 0, 0,
+                                          "a random opponent's warband: this fight's opponent's board at the start of combat"));
+        }
+
         if (!isOpponent)
         {
             // Our own values are on our screen and our player entity carries every one (a tag never set is 0).
             return estimates;
+        }
+
+        foreach (var (card, total) in ProgressCards)
+        {
+            if (side.Extras.Contains(card))
+            {
+                estimates.Add(new SimEstimate(SimInputs.ProgressLeft, total, 0, card + ": its progress is hidden from the player: " + total.ToString(CultureInfo.InvariantCulture) + " left"));
+            }
+        }
+
+        if (side.Minions.Any(m => m.CardId == TimewarpedBoar.Id) && !TimewarpedBoar.Shown(side))
+        {
+            estimates.Add(new SimEstimate(SimInputs.ProgressLeft, TimewarpedBoar.Every, 0,
+                                          TimewarpedBoar.Id + ": the dead Boars count is hidden from the player: 3 left"));
         }
 
         DeityStats(side, tags, local, estimates);
@@ -89,6 +124,37 @@ internal static class SimEstimates
         }
 
         return estimates;
+    }
+
+    /// <summary>Prestidigitation, The Great Akazamzarak's hero power: "Choose a Secret. Put it into the battlefield."</summary>
+    internal const string Prestidigitation = "TB_BaconShop_HP_020";
+
+    /// <summary>The Eleventh Hour anomaly, which gives every player its Secret (<see cref="DamageRules.EleventhHour"/>).</summary>
+    internal const string EleventhHourAnomaly = "BG27_Anomaly_575";
+
+    /// <summary>A Battlegrounds Secret: Akazamzarak's (TB_Bacon_Secrets_*) or the Eleventh Hour anomaly's.</summary>
+    internal static bool IsBattlegroundsSecret(string cardId) =>
+        cardId.StartsWith("TB_Bacon_Secrets_", StringComparison.Ordinal) || cardId == DamageRules.EleventhHour;
+
+    /// <summary>
+    /// The opponent's Secrets during the game (<see cref="SimInputs.OpponentSecrets"/>): the player sees <paramref name="count"/>
+    /// of them, not which. Null when they hold none, or cannot hold any (no Akazamzarak hero power, no Eleventh Hour anomaly:
+    /// a hidden card in their SECRET zone is then something else). Without Akazamzarak in an Eleventh Hour lobby the one Secret
+    /// they can hold is Eleventh Hour, so their fatal hero damage is prevented (<see cref="SimEstimate.Value2"/> = 1); with
+    /// Akazamzarak which Secrets they chose is hidden and they are left out of the fight.
+    /// </summary>
+    internal static SimEstimate? OpponentSecrets(SimSide side, int count)
+    {
+        var akazamzarak = side.HeroPowerCardId == Prestidigitation;
+        var eleventhHour = side.Extras.Contains(EleventhHourAnomaly, StringComparer.Ordinal);
+        if (count <= 0 || (!akazamzarak && !eleventhHour))
+        {
+            return null;
+        }
+
+        return akazamzarak
+            ? new SimEstimate(SimInputs.OpponentSecrets, count, 0, $"{count} Secret(s) of the opponent, which ones is hidden from the player: left out of the fight")
+            : new SimEstimate(SimInputs.OpponentSecrets, count, 1, "the opponent's hidden Secret can only be Eleventh Hour (the anomaly's): their fatal hero damage is prevented");
     }
 
     /// <summary>A hidden player bonus of the opponent: our own bonus as the prior (0 = the printed card), written into the tags.</summary>

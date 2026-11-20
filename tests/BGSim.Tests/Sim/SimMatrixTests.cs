@@ -63,7 +63,7 @@ public sealed partial class SimMatrixTests
     [InlineData("BG23_HERO_201p", CoverageStatus.Implemented)] // Tentacular
     [InlineData("BG35_MagicItem_701", CoverageStatus.Implemented)] // Fang Anklet
     [InlineData("BG30_MagicItem_442", CoverageStatus.Implemented)] // Blood Golem Sticker: tags 4235/4236 (E3)
-    [InlineData("BG30_MagicItem_427", CoverageStatus.MissingEffect)] // Tiger Carving: out of the pool, no code
+    [InlineData("BG30_MagicItem_427", CoverageStatus.Implemented)] // Tiger Carving: out of the pool, effect since E6b
     public void Plan_candidates(string cardId, CoverageStatus status) =>
         Assert.Equal(status, SimCoverage.Classify(cardId, CoverageKind.Trinket).Status);
 
@@ -104,7 +104,7 @@ public sealed partial class SimMatrixTests
 
     [Theory]
     [InlineData("BG24_Quest_124", CoverageStatus.Implemented)] // Reenact the Murder: minions die in a fight (E5 quest effect)
-    [InlineData("BG24_Quest_320", CoverageStatus.MissingEffect)] // Exhume the Bones (out of the pool): conditional, no effect
+    [InlineData("BG24_Quest_320", CoverageStatus.Implemented)] // Exhume the Bones (out of the pool): deathrattles trigger in a fight (E6a)
     [InlineData("BG24_Quest_313", CoverageStatus.NoEffect)] // Invite the Guests: buying is Tavern only
     public void Quests_that_progress_in_combat_are_conditional(string cardId, CoverageStatus status)
     {
