@@ -15,6 +15,12 @@
 | `src/BGSim/Cards/Card.cs` | Минимальный контракт данных карт (`Card`, `CardDb`) для карт, которых нет в таблице значимости |
 | `docs/bg-sim-matrix.md` | Матрица покрытия: статус каждого существа пула, силы героя, тринкета и тёмного дара |
 | `tests/BGSim.Tests/` | Тесты движка, эффектов, точности и свойств (xunit, CsCheck) |
+| `src/BGSim.Server/` | HTTP API симулятора (ASP.NET Core minimal API, Native AOT), `Dockerfile` и `compose.yaml` в корне — [docs/server.md](docs/server.md) |
+| `tests/BGSim.Server.Tests/` | Тесты API: проверка входа, лимиты, ключ, дополнение данных из пула, детерминизм |
+| `tools/BGSim.LoadTest/` | Замер сервера: старт, память, запросов/с (вне образа) |
+
+`src/BGSim/` и `tests/BGSim.Tests/` — копия из Hearthpulse, которую синхронизация перезаписывает целиком; свои файлы BGSim
+там — только оба `.csproj`, `Cards/Card.cs` и `Shims/`. Сервер, его тесты и инструменты живут вне этих папок.
 
 Пространства имён совпадают с Hearthpulse (`Hearthpulse.Core.Battlegrounds`, `...Effects`, `...Simulation`), чтобы
 файлы переносились между репозиториями без правок.
@@ -38,6 +44,19 @@ Console.WriteLine($"Победа {odds.Win:P0}, ничья {odds.Tie:P0}, пор
 `firstAttackerIsOurs: null` — первый атакующий определяется по правилам игры (больше существ, при равенстве — случайно).
 Число прогонов, предел времени, отмена и предел урона задаются через `SimOptions` в перегрузке
 `Run(SimSide, SimSide, bool?, SimOptions?)`.
+
+## Сервер (HTTP API, Docker)
+
+`src/BGSim.Server` — тот же симулятор как HTTP API: `POST /v1/simulate` (шансы боя), `POST /v1/fight` (один бой с
+журналом), `GET /v1/info`, `GET /health`. Один бинарник Native AOT в chiseled-образе (на Windows-замере — около 40 МБ
+рабочего набора и ~0,1 с до готовности); ничего не хранит и не пишет в журнал тела запросов. Поднять на сервере:
+
+```
+GIT_SHA=$(git rev-parse HEAD) docker compose up -d --build
+```
+
+Эндпоинты, формат запросов, лимиты, переменные окружения, обратный прокси с TLS и замеры ресурсов —
+[docs/server.md](docs/server.md).
 
 ## Сборка и тесты
 

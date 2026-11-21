@@ -1,0 +1,127 @@
+# Builds and tests the library and the server, then builds the Docker image on x64 and arm64, starts it with
+# compose.yaml and checks it from outside. The image is not published anywhere.
+name: docker
+
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: docker-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  test:
+    name: dotnet build and test
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    outputs:
+      effects: ${{ steps.effects.outputs.effects }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - uses: actions/setup-dotnet@0f4a354dd5547a28c70b7853dbd95d5b67886e73 # v6.1.0
+        with:
+          dotnet-version: 10.0.x
+
+      - name: Build
+        run: dotnet build BGSim.slnx -c Release -warnaserror
+
+      - name: Test
+        run: dotnet test BGSim.slnx -c Release --no-build --filter "Category!=Timing"
+
+      # The JIT build's effect count: the AOT image must find the same effects (EffectRegistry works by reflection).
+      - name: Effects in the JIT build
+        id: effects
+        run: |
+          ASPNETCORE_HTTP_PORTS=8099 dotnet src/BGSim.Server/bin/Release/net10.0/BGSim.Server.dll &
+          server=$!
+          for _ in $(seq 60); do curl -fsS http://127.0.0.1:8099/health >/dev/null 2>&1 && break; sleep 0.5; done
+          effects=$(curl -fsS http://127.0.0.1:8099/v1/info | jq -r .effects)
+          kill "$server"
+          echo "JIT effects: $effects"
+          echo "effects=$effects" >> "$GITHUB_OUTPUT"
+
+  image:
+    name: image (${{ matrix.arch }})
+    needs: test
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - arch: x64
+            runner: ubuntu-24.04
+          - arch: arm64
+            runner: ubuntu-24.04-arm
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 30
+    env:
+      GIT_SHA: ${{ github.sha }}
+      JIT_EFFECTS: ${{ needs.test.outputs.effects }}
+      BASE: http://127.0.0.1:8080
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Build and start
+        run: docker compose up -d --build --wait --wait-timeout 120
+
+      - name: Smoke requests
+        run: |
+          set -euo pipefail
+          test "$(curl -fsS "$BASE/health")" = ok
+
+          info=$(curl -fsS "$BASE/v1/info")
+          echo "$info" | jq .
+          test "$(echo "$info" | jq -r .runtime)" = native-aot
+          test "$(echo "$info" | jq -r .commit)" = "$GIT_SHA"
+          test "$(echo "$info" | jq -r .effectProblems)" = 0
+          test "$(echo "$info" | jq -r .effects)" = "$JIT_EFFECTS"
+
+          odds=$(curl -fsS -H 'Content-Type: application/json' --data-binary @tools/BGSim.LoadTest/board-7x7.json "$BASE/v1/simulate")
+          echo "$odds" | jq -c 'del(.damageTaken.counts, .damageDealt.counts)'
+          echo "$odds" | jq -e '.runs > 0 and ((.win + .tie + .loss) - 1 | fabs) < 1e-9' >/dev/null
+
+          fight=$(jq '. + {seed: 1}' tools/BGSim.LoadTest/board-7x7.json | curl -fsS -H 'Content-Type: application/json' --data-binary @- "$BASE/v1/fight")
+          echo "$fight" | jq -e '.outcome and (.log | length) > 0' >/dev/null
+
+          status() { curl -s -o /dev/null -w '%{http_code}' -H 'Content-Type: application/json' --data-binary "$1" "$BASE/v1/simulate"; }
+          test "$(status '{"player":{"board":[{"cardId":"BGS_004","attack":-1,"health":1}]},"opponent":{"board":[]}}')" = 400
+          test "$(status '{"player":')" = 400
+          test "$(docker compose ps --format '{{.Health}}' bgsim)" = healthy
+
+      - name: Size and memory
+        run: |
+          set -euo pipefail
+          id=$(docker compose ps -q bgsim)
+          size=$(docker image inspect bgsim-server:local --format '{{.Size}}')
+          user=$(docker inspect "$id" --format '{{.Config.User}}')
+          idle=$(docker stats --no-stream --format '{{.MemUsage}}' "$id")
+          # 400 requests, 4 at a time.
+          seq 400 | xargs -P 4 -I{} curl -fsS -o /dev/null -H 'Content-Type: application/json' \
+            --data-binary @tools/BGSim.LoadTest/board-7x7.json "$BASE/v1/simulate"
+          loaded=$(docker stats --no-stream --format '{{.MemUsage}}' "$id")
+          {
+            echo "### BGSim.Server image (${{ matrix.arch }})"
+            echo "| | |"
+            echo "|---|---|"
+            echo "| image size | $((size / 1024 / 1024)) MB ($size bytes) |"
+            echo "| user | $user |"
+            echo "| memory idle | $idle |"
+            echo "| memory after 400 /v1/simulate | $loaded |"
+          } | tee -a "$GITHUB_STEP_SUMMARY"
+
+      - name: Logs
+        if: failure()
+        run: docker compose logs --no-color
+
+      - name: Stop
+        if: always()
+        run: docker compose down

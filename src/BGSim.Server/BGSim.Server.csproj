@@ -1,0 +1,37 @@
+<Project Sdk="Microsoft.NET.Sdk.Web">
+
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+    <RootNamespace>BGSim.Server</RootNamespace>
+    <AssemblyName>BGSim.Server</AssemblyName>
+    <SatelliteResourceLanguages>en</SatelliteResourceLanguages>
+
+    <!-- One self-contained native binary: fast start, small image, low memory (docs/server.md, "Замеры"). -->
+    <PublishAot>true</PublishAot>
+    <OptimizationPreference>Speed</OptimizationPreference>
+    <InvariantGlobalization>true</InvariantGlobalization>
+    <UseSystemResourceKeys>true</UseSystemResourceKeys>
+    <EventSourceSupport>false</EventSourceSupport>
+    <!-- Workstation, non-concurrent GC: no background GC thread and the smallest heap for a small container. -->
+    <ServerGarbageCollection>false</ServerGarbageCollection>
+    <ConcurrentGarbageCollection>false</ConcurrentGarbageCollection>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\BGSim\BGSim.csproj" />
+    <!-- EffectRegistry finds card effects by reflection (Assembly.GetTypes + Activator): keep every type of BGSim. -->
+    <TrimmerRootAssembly Include="BGSim" />
+    <InternalsVisibleTo Include="BGSim.Server.Tests" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <!-- GHSA-p3jp-9v83-76w9: the Brotli decoder of .NET runtimes before 10.0.14, flagged on the ILCompiler package an older
+         SDK brings. Not reachable here: the server decompresses nothing (no request decompression, no HttpClient), and the
+         Docker image is built with the current SDK image, which carries the fixed runtime. Kept so that an older local SDK
+         still builds with -warnaserror; drop it once every SDK in use is 10.0.14 or later. -->
+    <NuGetAuditSuppress Include="https://github.com/advisories/GHSA-p3jp-9v83-76w9" />
+  </ItemGroup>
+
+</Project>

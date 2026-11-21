@@ -1,0 +1,32 @@
+{
+  "player": {
+    "hero": "TB_BaconShop_HERO_01",
+    "health": 22,
+    "tavernTier": 5,
+    "turn": 11,
+    "board": [
+      { "cardId": "BG25_009", "attack": 14, "health": 9 },
+      { "cardId": "BGS_008", "attack": 11, "health": 12 },
+      { "cardId": "BG36_372", "attack": 16, "health": 18 },
+      { "cardId": "BG34_405", "attack": 9, "health": 11 },
+      { "cardId": "BG36_854", "attack": 6, "health": 5, "golden": true },
+      { "cardId": "BG25_010", "attack": 7, "health": 6 },
+      { "cardId": "BG36_207", "attack": 8, "health": 14 }
+    ]
+  },
+  "opponent": {
+    "hero": "TB_BaconShop_HERO_02",
+    "health": 19,
+    "tavernTier": 5,
+    "turn": 11,
+    "board": [
+      { "cardId": "BG23_318", "attack": 12, "health": 8 },
+      { "cardId": "BG35_604", "attack": 10, "health": 15 },
+      { "cardId": "BG31_809", "attack": 12, "health": 12 },
+      { "cardId": "BG31_925", "attack": 9, "health": 7 },
+      { "cardId": "BG32_324", "attack": 6, "health": 16 },
+      { "cardId": "BG28_741", "attack": 9, "health": 5 },
+      { "cardId": "BG32_880", "attack": 13, "health": 7 }
+    ]
+  }
+}

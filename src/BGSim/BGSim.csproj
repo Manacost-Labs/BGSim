@@ -12,6 +12,8 @@
   <ItemGroup>
     <None Include="Effects\README.md" />
     <InternalsVisibleTo Include="BGSim.Tests" />
+    <InternalsVisibleTo Include="BGSim.Server" />
+    <InternalsVisibleTo Include="BGSim.Server.Tests" />
   </ItemGroup>
 
 </Project>
